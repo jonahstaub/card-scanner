@@ -1,8 +1,8 @@
-import Anthropic from "@anthropic-ai/sdk";
+import Groq from "groq-sdk";
 import { NextRequest, NextResponse } from "next/server";
 import type { PriceResponse } from "@/lib/types";
 
-const client = new Anthropic();
+const client = new Groq();
 
 function parseJSON(text: string): unknown {
   const stripped = text.replace(/^```(?:json)?\s*\n?/m, "").replace(/\n?```\s*$/m, "");
@@ -20,18 +20,21 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const prompt = `Find the most recent completed sale prices for ${playerName} ${year} ${cardSet} #${cardNumber} in ${condition} condition. Search eBay completed listings, COMC, and card price guides. Return ONLY valid JSON: {"estimatedPrice": number, "priceRange": {"low": number, "high": number}, "sources": [{"source": string, "price": number, "date": string}]}.`;
+    const prompt = `You are a sports card pricing expert. Estimate the current market value for this card based on your knowledge of recent sales, eBay completed listings, and card market trends:
 
-    const message = await client.messages.create({
-      model: "claude-sonnet-4-20250514",
+Player: ${playerName}
+Year: ${year}
+Set: ${cardSet}
+Card Number: #${cardNumber}
+Condition: ${condition}
+
+Provide your best estimate of the current market value. Be realistic based on the player's status, card rarity, and condition. Return ONLY valid JSON: {"estimatedPrice": number, "priceRange": {"low": number, "high": number}, "sources": [{"source": string, "price": number, "date": string}]}.
+
+For sources, list the marketplaces/price guides you're basing your estimate on (e.g. "eBay recent sales", "COMC", "PSA price guide") with estimated prices from each. Use approximate recent dates.`;
+
+    const completion = await client.chat.completions.create({
+      model: "llama-3.3-70b-versatile",
       max_tokens: 1024,
-      tools: [
-        {
-          type: "web_search_20250305",
-          name: "web_search",
-          max_uses: 5,
-        },
-      ],
       messages: [
         {
           role: "user",
@@ -40,15 +43,15 @@ export async function POST(req: NextRequest) {
       ],
     });
 
-    const textBlock = message.content.find((b) => b.type === "text");
-    if (!textBlock || textBlock.type !== "text") {
+    const text = completion.choices[0]?.message?.content;
+    if (!text) {
       return NextResponse.json(
-        { error: "No text response from Claude" },
+        { error: "No response from Groq" },
         { status: 502 }
       );
     }
 
-    const priceData = parseJSON(textBlock.text) as PriceResponse;
+    const priceData = parseJSON(text) as PriceResponse;
     return NextResponse.json(priceData);
   } catch (err) {
     console.error("price error:", err);

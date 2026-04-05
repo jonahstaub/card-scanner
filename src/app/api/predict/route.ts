@@ -1,8 +1,8 @@
-import Anthropic from "@anthropic-ai/sdk";
+import Groq from "groq-sdk";
 import { NextRequest, NextResponse } from "next/server";
 import type { PredictResponse } from "@/lib/types";
 
-const client = new Anthropic();
+const client = new Groq();
 
 function parseJSON(text: string): unknown {
   const stripped = text.replace(/^```(?:json)?\s*\n?/m, "").replace(/\n?```\s*$/m, "");
@@ -31,10 +31,16 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const prompt = `Given ${playerName}'s age, career stats, contract status, team situation, and current card value of $${currentPrice}, estimate this card's value in 1, 3, and 5 years under three scenarios. Bull (top 10% outcome: All-Star, MVP contention, career year). Base (50th percentile: continues current trajectory). Bear (bottom 10%: significant decline, major injury, demotion). Return ONLY valid JSON: {"bull": {"y1": number, "y3": number, "y5": number, "reasoning": string}, "base": {"y1": number, "y3": number, "y5": number, "reasoning": string}, "bear": {"y1": number, "y3": number, "y5": number, "reasoning": string}}.`;
+    const prompt = `You are a sports card market analyst. Given ${playerName}'s age, career stats, contract status, team situation, and current card value of $${currentPrice} for their ${year} ${cardSet} #${cardNumber} in ${condition} condition, estimate this card's value in 1, 3, and 5 years under three scenarios.
 
-    const message = await client.messages.create({
-      model: "claude-sonnet-4-20250514",
+Bull (top 10% outcome: All-Star, MVP contention, career year).
+Base (50th percentile: continues current trajectory).
+Bear (bottom 10%: significant decline, major injury, demotion).
+
+Be realistic and specific about what would drive each scenario for this particular player. Return ONLY valid JSON: {"bull": {"y1": number, "y3": number, "y5": number, "reasoning": string}, "base": {"y1": number, "y3": number, "y5": number, "reasoning": string}, "bear": {"y1": number, "y3": number, "y5": number, "reasoning": string}}.`;
+
+    const completion = await client.chat.completions.create({
+      model: "llama-3.3-70b-versatile",
       max_tokens: 1024,
       messages: [
         {
@@ -44,15 +50,15 @@ export async function POST(req: NextRequest) {
       ],
     });
 
-    const textBlock = message.content.find((b) => b.type === "text");
-    if (!textBlock || textBlock.type !== "text") {
+    const text = completion.choices[0]?.message?.content;
+    if (!text) {
       return NextResponse.json(
-        { error: "No text response from Claude" },
+        { error: "No response from Groq" },
         { status: 502 }
       );
     }
 
-    const predictions = parseJSON(textBlock.text) as PredictResponse;
+    const predictions = parseJSON(text) as PredictResponse;
     return NextResponse.json(predictions);
   } catch (err) {
     console.error("predict error:", err);

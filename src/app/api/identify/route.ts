@@ -1,11 +1,10 @@
-import Anthropic from "@anthropic-ai/sdk";
+import Groq from "groq-sdk";
 import { NextRequest, NextResponse } from "next/server";
 import type { CardCandidate, IdentifyResponse } from "@/lib/types";
 
-const client = new Anthropic();
+const client = new Groq();
 
 function parseJSON(text: string): unknown {
-  // Strip markdown code blocks if present
   const stripped = text.replace(/^```(?:json)?\s*\n?/m, "").replace(/\n?```\s*$/m, "");
   return JSON.parse(stripped.trim());
 }
@@ -21,19 +20,17 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const message = await client.messages.create({
-      model: "claude-sonnet-4-20250514",
+    const completion = await client.chat.completions.create({
+      model: "llama-3.2-90b-vision-preview",
       max_tokens: 1024,
       messages: [
         {
           role: "user",
           content: [
             {
-              type: "image",
-              source: {
-                type: "base64",
-                media_type: "image/jpeg",
-                data: image,
+              type: "image_url",
+              image_url: {
+                url: `data:image/jpeg;base64,${image}`,
               },
             },
             {
@@ -45,16 +42,15 @@ export async function POST(req: NextRequest) {
       ],
     });
 
-    const textBlock = message.content.find((b) => b.type === "text");
-    if (!textBlock || textBlock.type !== "text") {
+    const text = completion.choices[0]?.message?.content;
+    if (!text) {
       return NextResponse.json(
-        { error: "No text response from Claude" },
+        { error: "No response from Groq" },
         { status: 502 }
       );
     }
 
-    const candidates = parseJSON(textBlock.text) as CardCandidate[];
-
+    const candidates = parseJSON(text) as CardCandidate[];
     const response: IdentifyResponse = { candidates };
     return NextResponse.json(response);
   } catch (err) {
