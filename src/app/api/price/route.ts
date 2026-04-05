@@ -2,11 +2,37 @@ import Groq from "groq-sdk";
 import { NextRequest, NextResponse } from "next/server";
 import type { PriceResponse } from "@/lib/types";
 
-const client = new Groq();
+const groq = new Groq();
 
 function parseJSON(text: string): unknown {
   const stripped = text.replace(/^```(?:json)?\s*\n?/m, "").replace(/\n?```\s*$/m, "");
   return JSON.parse(stripped.trim());
+}
+
+async function searchSerper(query: string): Promise<string> {
+  const res = await fetch("https://google.serper.dev/search", {
+    method: "POST",
+    headers: {
+      "X-API-KEY": process.env.SERPER_API_KEY!,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ q: query, num: 10 }),
+  });
+
+  if (!res.ok) {
+    throw new Error(`Serper search failed: ${res.status}`);
+  }
+
+  const data = await res.json();
+  const results: string[] = [];
+
+  if (data.organic) {
+    for (const item of data.organic) {
+      results.push(`${item.title}: ${item.snippet || ""} (${item.link})`);
+    }
+  }
+
+  return results.join("\n");
 }
 
 export async function POST(req: NextRequest) {
@@ -20,19 +46,25 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const prompt = `You are a sports card pricing expert. Estimate the current market value for this card based on your knowledge of recent sales, eBay completed listings, and card market trends:
+    const cardDesc = `${playerName} ${year} ${cardSet} #${cardNumber}`;
 
-Player: ${playerName}
-Year: ${year}
-Set: ${cardSet}
-Card Number: #${cardNumber}
-Condition: ${condition}
+    // Search for recent sold prices
+    const searchResults = await searchSerper(
+      `${cardDesc} card sold price eBay completed site:ebay.com OR site:comc.com OR site:130point.com`
+    );
 
-Provide your best estimate of the current market value. Be realistic based on the player's status, card rarity, and condition. Return ONLY valid JSON: {"estimatedPrice": number, "priceRange": {"low": number, "high": number}, "sources": [{"source": string, "price": number, "date": string}]}.
+    const prompt = `You are a sports card pricing expert. Based on these real search results for "${cardDesc}" in ${condition} condition, estimate the current market value.
 
-For sources, list the marketplaces/price guides you're basing your estimate on (e.g. "eBay recent sales", "COMC", "PSA price guide") with estimated prices from each. Use approximate recent dates.`;
+SEARCH RESULTS:
+${searchResults}
 
-    const completion = await client.chat.completions.create({
+Analyze the search results to find actual sale prices. If you find specific sold prices, use those. If results are limited, make your best estimate based on what's available.
+
+Return ONLY valid JSON: {"estimatedPrice": number, "priceRange": {"low": number, "high": number}, "sources": [{"source": string, "price": number, "date": string}]}.
+
+For sources, list the actual sales or listings you found with real prices and approximate dates. If a result doesn't have a clear price, skip it.`;
+
+    const completion = await groq.chat.completions.create({
       model: "llama-3.3-70b-versatile",
       max_tokens: 1024,
       messages: [
