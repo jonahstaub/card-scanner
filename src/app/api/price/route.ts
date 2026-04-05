@@ -2,37 +2,11 @@ import Groq from "groq-sdk";
 import { NextRequest, NextResponse } from "next/server";
 import type { PriceResponse } from "@/lib/types";
 
-const groq = new Groq();
+const client = new Groq();
 
 function parseJSON(text: string): unknown {
   const stripped = text.replace(/^```(?:json)?\s*\n?/m, "").replace(/\n?```\s*$/m, "");
   return JSON.parse(stripped.trim());
-}
-
-async function searchSerper(query: string): Promise<string> {
-  const res = await fetch("https://google.serper.dev/search", {
-    method: "POST",
-    headers: {
-      "X-API-KEY": process.env.SERPER_API_KEY!,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ q: query, num: 10 }),
-  });
-
-  if (!res.ok) {
-    throw new Error(`Serper search failed: ${res.status}`);
-  }
-
-  const data = await res.json();
-  const results: string[] = [];
-
-  if (data.organic) {
-    for (const item of data.organic) {
-      results.push(`${item.title}: ${item.snippet || ""} (${item.link})`);
-    }
-  }
-
-  return results.join("\n");
 }
 
 export async function POST(req: NextRequest) {
@@ -48,29 +22,17 @@ export async function POST(req: NextRequest) {
 
     const cardDesc = `${playerName} ${year} ${cardSet} #${cardNumber}`;
 
-    // Search for recent sold prices
-    const searchResults = await searchSerper(
-      `${cardDesc} card sold price eBay completed site:ebay.com OR site:comc.com OR site:130point.com`
-    );
-
-    const prompt = `You are a sports card pricing expert. Based on these real search results for "${cardDesc}" in ${condition} condition, estimate the current market value.
-
-SEARCH RESULTS:
-${searchResults}
-
-Analyze the search results to find actual sale prices. If you find specific sold prices, use those. If results are limited, make your best estimate based on what's available.
-
-Return ONLY valid JSON: {"estimatedPrice": number, "priceRange": {"low": number, "high": number}, "sources": [{"source": string, "price": number, "date": string}]}.
-
-For sources, list the actual sales or listings you found with real prices and approximate dates. If a result doesn't have a clear price, skip it.`;
-
-    const completion = await groq.chat.completions.create({
-      model: "llama-3.3-70b-versatile",
+    const completion = await client.chat.completions.create({
+      model: "groq/compound",
       max_tokens: 1024,
       messages: [
         {
           role: "user",
-          content: prompt,
+          content: `Search the web for recent sold prices of this sports card: ${cardDesc} in ${condition} condition. Look for eBay completed/sold listings, COMC prices, and card price guides. Find actual dollar amounts from real sales.
+
+Return ONLY valid JSON: {"estimatedPrice": number, "priceRange": {"low": number, "high": number}, "sources": [{"source": string, "price": number, "date": string}]}.
+
+Use real prices you find from your search. For sources, list the actual sales or listings with real prices and dates.`,
         },
       ],
     });

@@ -4,13 +4,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { CardCandidate } from "@/lib/types";
 
-type Status = "camera" | "loading" | "error" | "denied";
+type Status = "camera" | "scanning" | "identifying" | "error" | "denied";
 
 export default function ScannerPage() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const router = useRouter();
   const [status, setStatus] = useState<Status>("camera");
+  const [statusText, setStatusText] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -53,13 +54,36 @@ export default function ScannerPage() {
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
     const base64 = canvas.toDataURL("image/jpeg", 0.85);
 
-    setStatus("loading");
+    // Step 1: OCR with Tesseract
+    setStatus("scanning");
+    setStatusText("Reading card text...");
+
+    let ocrText = "";
+    try {
+      const { createWorker } = await import("tesseract.js");
+      const worker = await createWorker("eng");
+      const { data } = await worker.recognize(base64);
+      ocrText = data.text;
+      await worker.terminate();
+    } catch {
+      setStatus("error");
+      return;
+    }
+
+    if (!ocrText.trim()) {
+      setStatus("error");
+      return;
+    }
+
+    // Step 2: Send OCR text to Groq for identification
+    setStatus("identifying");
+    setStatusText("Identifying card...");
 
     try {
       const res = await fetch("/api/identify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ image: base64 }),
+        body: JSON.stringify({ ocrText }),
       });
 
       if (!res.ok) throw new Error("identify failed");
@@ -133,13 +157,13 @@ export default function ScannerPage() {
         )}
 
         {/* Loading overlay */}
-        {status === "loading" && (
+        {(status === "scanning" || status === "identifying") && (
           <div className="absolute inset-0 flex flex-col items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.7)" }}>
             <div
               className="w-10 h-10 rounded-full border-2 animate-spin mb-4"
               style={{ borderColor: "#333", borderTopColor: "#4ade80" }}
             />
-            <p className="text-sm" style={{ color: "#888" }}>Identifying card...</p>
+            <p className="text-sm" style={{ color: "#888" }}>{statusText}</p>
           </div>
         )}
 
@@ -147,7 +171,7 @@ export default function ScannerPage() {
         {status === "error" && (
           <div className="absolute inset-0 flex flex-col items-center justify-center px-6" style={{ backgroundColor: "rgba(0,0,0,0.7)" }}>
             <p className="text-lg font-semibold mb-2">Couldn&apos;t identify this card</p>
-            <p className="text-sm mb-6" style={{ color: "#888" }}>Try again or enter the details manually</p>
+            <p className="text-sm mb-6" style={{ color: "#888" }}>Try again with better lighting or enter the details manually</p>
             <div className="flex gap-3">
               <button
                 onClick={() => setStatus("camera")}

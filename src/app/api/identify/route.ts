@@ -11,33 +11,26 @@ function parseJSON(text: string): unknown {
 
 export async function POST(req: NextRequest) {
   try {
-    const { image } = await req.json();
+    const { ocrText } = await req.json();
 
-    if (!image || typeof image !== "string") {
+    if (!ocrText || typeof ocrText !== "string") {
       return NextResponse.json(
-        { error: "Missing or invalid 'image' field (expected base64 JPEG string)" },
+        { error: "Missing or invalid 'ocrText' field" },
         { status: 400 }
       );
     }
 
     const completion = await client.chat.completions.create({
-      model: "llama-3.2-90b-vision-preview",
+      model: "groq/compound",
       max_tokens: 1024,
       messages: [
         {
           role: "user",
-          content: [
-            {
-              type: "image_url",
-              image_url: {
-                url: `data:image/jpeg;base64,${image}`,
-              },
-            },
-            {
-              type: "text",
-              text: "Identify this sports card (primarily baseball). Return a JSON array of up to 3 candidates ranked by confidence. Each candidate: {playerName, year, cardSet, cardNumber, condition, confidence}. Use raw condition descriptors: Gem Mint, Mint, Near Mint, Excellent, Very Good, Good, Fair, Poor. Return ONLY valid JSON, no markdown.",
-            },
-          ],
+          content: `I scanned a sports card and the OCR read the following text from it:
+
+"${ocrText}"
+
+Based on this text, identify the sports card. Search the web if needed to match the card to a specific product. Return a JSON array of up to 3 candidates ranked by confidence. Each candidate: {playerName: string, year: number, cardSet: string, cardNumber: string, condition: string, confidence: number}. For condition, use "Near Mint" as default since we can't assess condition from text. Confidence should be 0-1. Return ONLY valid JSON array, no other text.`,
         },
       ],
     });
