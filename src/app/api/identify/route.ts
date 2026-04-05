@@ -20,17 +20,16 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Truncate OCR text to avoid request size limits
+    const trimmed = ocrText.slice(0, 1000).trim();
+
     const completion = await client.chat.completions.create({
-      model: "groq/compound",
-      max_tokens: 1024,
+      model: "llama-3.3-70b-versatile",
+      max_tokens: 512,
       messages: [
         {
           role: "user",
-          content: `I scanned a sports card and the OCR read the following text from it:
-
-"${ocrText}"
-
-Based on this text, identify the sports card. Search the web if needed to match the card to a specific product. Return a JSON array of up to 3 candidates ranked by confidence. Each candidate: {playerName: string, year: number, cardSet: string, cardNumber: string, condition: string, confidence: number}. For condition, use "Near Mint" as default since we can't assess condition from text. Confidence should be 0-1. Return ONLY valid JSON array, no other text.`,
+          content: `OCR text from a sports card scan:\n"${trimmed}"\n\nIdentify this card. Return JSON array of up to 3 candidates: [{playerName, year, cardSet, cardNumber, condition: "Near Mint", confidence}]. JSON only.`,
         },
       ],
     });

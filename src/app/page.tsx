@@ -148,8 +148,7 @@ export default function ScannerPage() {
           autoPlay
           playsInline
           muted
-          className="absolute inset-0 h-full w-full object-cover"
-          style={{ display: capturedImage ? "none" : "block" }}
+          className={`absolute inset-0 h-full w-full object-cover ${capturedImage ? "hidden" : ""}`}
         />
 
         {/* Captured photo */}
