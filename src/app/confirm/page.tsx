@@ -36,7 +36,8 @@ export default function ConfirmPage() {
   }
 
   function handleYes() {
-    sessionStorage.setItem("selected_card", JSON.stringify(candidate));
+    sessionStorage.setItem("selectedCandidate", JSON.stringify(candidate));
+    sessionStorage.setItem("capturedPhoto", sessionStorage.getItem("scan_photo") || "");
     router.push("/card/new");
   }
 

@@ -38,7 +38,7 @@ export default function ManualEntryPage() {
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     sessionStorage.setItem(
-      "selected_card",
+      "selectedCandidate",
       JSON.stringify({
         playerName,
         year: parseInt(year, 10),
@@ -48,6 +48,8 @@ export default function ManualEntryPage() {
         confidence: 0,
       })
     );
+    // Set an empty photo placeholder for manual entries
+    sessionStorage.setItem("capturedPhoto", "");
     router.push("/card/new");
   }
 

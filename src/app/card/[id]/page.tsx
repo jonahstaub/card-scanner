@@ -45,8 +45,8 @@ export default function CardDetailPage() {
     hasStarted.current = true;
 
     const raw = sessionStorage.getItem('selectedCandidate');
-    const photo = sessionStorage.getItem('capturedPhoto');
-    if (!raw || !photo) {
+    const photo = sessionStorage.getItem('capturedPhoto') || '';
+    if (!raw) {
       router.replace('/');
       return;
     }
