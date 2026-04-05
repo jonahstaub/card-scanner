@@ -148,7 +148,8 @@ export default function ScannerPage() {
           autoPlay
           playsInline
           muted
-          className={`absolute inset-0 h-full w-full object-cover ${capturedImage ? "hidden" : ""}`}
+          className="absolute inset-0 h-full w-full object-cover"
+          suppressHydrationWarning
         />
 
         {/* Captured photo */}
