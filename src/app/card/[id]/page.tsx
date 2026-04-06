@@ -246,12 +246,40 @@ export default function CardDetailPage() {
           &larr;
         </button>
         {stage === 'done' && (
-          <button
-            className="px-4 py-1.5 rounded-full text-sm font-medium"
-            style={{ background: '#4ade80', color: '#000' }}
-          >
-            In Collection
-          </button>
+          <div className="flex items-center gap-2">
+            {!isNew && (
+              <button
+                onClick={() => {
+                  // Re-run price + predict for this card
+                  sessionStorage.setItem('selectedCandidate', JSON.stringify({
+                    playerName: card.playerName,
+                    year: card.year,
+                    cardSet: card.cardSet,
+                    cardNumber: card.cardNumber,
+                    condition: card.condition,
+                    parallel: card.parallel || 'Base',
+                    confidence: 1,
+                  }));
+                  sessionStorage.setItem('capturedPhoto', card.photo || '');
+                  hasStarted.current = false;
+                  setStage('init');
+                  setPriceError(false);
+                  setPredictError(false);
+                  router.push('/card/new');
+                }}
+                className="px-3 py-1.5 rounded-full text-sm"
+                style={{ border: '1px solid #333', color: '#888' }}
+              >
+                ↻ Refresh
+              </button>
+            )}
+            <span
+              className="px-4 py-1.5 rounded-full text-sm font-medium"
+              style={{ background: '#4ade80', color: '#000' }}
+            >
+              In Collection
+            </span>
+          </div>
         )}
       </div>
 

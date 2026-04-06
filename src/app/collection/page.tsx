@@ -3,13 +3,15 @@
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import type { Card } from "@/lib/types";
-import { getAllCards, deleteCard } from "@/lib/storage";
+import type { Card, PriceResponse, PredictResponse } from "@/lib/types";
+import { getAllCards, deleteCard, updateCardPredictions } from "@/lib/storage";
 
 export default function CollectionPage() {
   const [cards, setCards] = useState<Card[]>([]);
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshProgress, setRefreshProgress] = useState({ done: 0, total: 0 });
 
   const loadCards = useCallback(async () => {
     const allCards = await getAllCards();
@@ -32,6 +34,87 @@ export default function CollectionPage() {
     setCards((prev) => prev.filter((c) => c.id !== id));
     setDeletingId(null);
   };
+
+  const refreshAllCards = useCallback(async () => {
+    if (refreshing || cards.length === 0) return;
+    setRefreshing(true);
+    setRefreshProgress({ done: 0, total: cards.length });
+
+    for (let i = 0; i < cards.length; i++) {
+      const card = cards[i];
+      try {
+        // Fetch new price
+        const priceRes = await fetch("/api/price", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            playerName: card.playerName,
+            year: card.year,
+            cardSet: card.cardSet,
+            cardNumber: card.cardNumber,
+            condition: card.condition,
+            parallel: card.parallel || "Base",
+          }),
+        });
+
+        if (!priceRes.ok) {
+          setRefreshProgress({ done: i + 1, total: cards.length });
+          continue;
+        }
+
+        const priceData: PriceResponse = await priceRes.json();
+        const correctedName = priceData.correctedName || card.playerName;
+        const newPrice = priceData.estimatedPrice;
+
+        // Fetch new predictions
+        const predictRes = await fetch("/api/predict", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            playerName: correctedName,
+            year: card.year,
+            cardSet: card.cardSet,
+            cardNumber: card.cardNumber,
+            condition: card.condition,
+            currentPrice: newPrice,
+            parallel: card.parallel || "Base",
+          }),
+        });
+
+        if (predictRes.ok) {
+          const predictData: PredictResponse = await predictRes.json();
+          await updateCardPredictions(
+            card.id,
+            predictData,
+            newPrice,
+            priceData.priceRange,
+            priceData.sources
+          );
+          // Update local state
+          setCards((prev) =>
+            prev.map((c) =>
+              c.id === card.id
+                ? {
+                    ...c,
+                    playerName: correctedName,
+                    currentPrice: newPrice,
+                    priceRange: priceData.priceRange,
+                    priceSources: priceData.sources,
+                    predictions: predictData,
+                    lastUpdated: new Date().toISOString(),
+                  }
+                : c
+            )
+          );
+        }
+      } catch {
+        // Skip failed cards, continue with the rest
+      }
+      setRefreshProgress({ done: i + 1, total: cards.length });
+    }
+
+    setRefreshing(false);
+  }, [refreshing, cards]);
 
   function getBullBearIndicator(card: Card) {
     if (!card.predictions?.bull || !card.predictions?.bear) {
@@ -78,15 +161,46 @@ export default function CollectionPage() {
     <div className="min-h-screen bg-[#111]">
       <div className="mx-auto max-w-[430px] px-4 pt-12 pb-24">
         {/* Header */}
-        <h1 className="text-2xl font-bold text-white">My Collection</h1>
-        {cards.length > 0 && (
-          <p className="mt-1 text-sm text-[#888]">
-            {cards.length} card{cards.length !== 1 && "s"} · Est. value:{" "}
-            <span className="text-[#4ade80] font-semibold">
-              ${totalValue.toLocaleString()}
-            </span>
-          </p>
-        )}
+        <div className="flex items-start justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-white">My Collection</h1>
+            {cards.length > 0 && (
+              <p className="mt-1 text-sm text-[#888]">
+                {cards.length} card{cards.length !== 1 && "s"} · Est. value:{" "}
+                <span className="text-[#4ade80] font-semibold">
+                  ${totalValue.toLocaleString()}
+                </span>
+              </p>
+            )}
+          </div>
+          {cards.length > 0 && (
+            <button
+              onClick={refreshAllCards}
+              disabled={refreshing}
+              className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm"
+              style={{
+                border: "1px solid #333",
+                color: refreshing ? "#666" : "#4ade80",
+              }}
+            >
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 16 16"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                className={refreshing ? "animate-spin" : ""}
+              >
+                <path d="M14 8A6 6 0 1 1 8 2" />
+                <path d="M8 2L10 4L8 6" />
+              </svg>
+              {refreshing
+                ? `${refreshProgress.done}/${refreshProgress.total}`
+                : "Refresh All"}
+            </button>
+          )}
+        </div>
 
         {/* Card list or empty state */}
         {cards.length === 0 ? (
