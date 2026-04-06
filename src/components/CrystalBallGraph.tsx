@@ -7,7 +7,6 @@ import {
   YAxis,
   Tooltip,
   ResponsiveContainer,
-  Dot,
 } from 'recharts';
 import type { ScenarioPrediction } from '@/lib/types';
 
@@ -20,16 +19,60 @@ interface CrystalBallGraphProps {
   currentPrice: number;
 }
 
+// Interpolate between known price points to generate weekly data
+function interpolateWeekly(
+  currentPrice: number,
+  scenario: ScenarioPrediction
+): number[] {
+  // Key points: week 0, week 52 (1yr), week 156 (3yr), week 260 (5yr)
+  const points = [
+    { week: 0, price: currentPrice },
+    { week: 52, price: scenario.y1 },
+    { week: 156, price: scenario.y3 },
+    { week: 260, price: scenario.y5 },
+  ];
+
+  const weeks: number[] = [];
+  for (let w = 0; w <= 260; w++) {
+    // Find which two key points we're between
+    let i = 0;
+    while (i < points.length - 1 && points[i + 1].week < w) i++;
+    if (i >= points.length - 1) {
+      weeks.push(points[points.length - 1].price);
+      continue;
+    }
+
+    const p0 = points[i];
+    const p1 = points[i + 1];
+    const t = (w - p0.week) / (p1.week - p0.week);
+    // Smooth interpolation (ease in-out)
+    const smooth = t * t * (3 - 2 * t);
+    weeks.push(Math.round((p0.price + (p1.price - p0.price) * smooth) * 100) / 100);
+  }
+  return weeks;
+}
+
+function formatWeekLabel(week: number): string {
+  if (week === 0) return 'Now';
+  if (week < 52) return `${week}w`;
+  const years = Math.floor(week / 52);
+  const remainingWeeks = week % 52;
+  if (remainingWeeks === 0) return `${years}yr`;
+  return `${years}yr ${remainingWeeks}w`;
+}
+
 function CustomTooltip({ active, payload, label }: {
   active?: boolean;
   payload?: Array<{ dataKey: string; value: number; color: string }>;
-  label?: string;
+  label?: number;
 }) {
-  if (!active || !payload?.length) return null;
+  if (!active || !payload?.length || label === undefined) return null;
 
   return (
     <div className="rounded-lg px-3 py-2" style={{ background: '#222', border: '1px solid #333' }}>
-      <p className="text-xs font-medium mb-1" style={{ color: '#ccc' }}>{label}</p>
+      <p className="text-xs font-medium mb-1" style={{ color: '#ccc' }}>
+        {formatWeekLabel(label)}
+      </p>
       {payload.map((entry) => (
         <div key={entry.dataKey} className="flex items-center gap-2 text-xs">
           <span
@@ -52,47 +95,31 @@ export default function CrystalBallGraph({
   predictions,
   currentPrice,
 }: CrystalBallGraphProps) {
-  const data = [
-    {
-      label: 'Now',
-      bull: currentPrice,
-      base: currentPrice,
-      bear: currentPrice,
-    },
-    {
-      label: '1yr',
-      bull: predictions.bull.y1,
-      base: predictions.base.y1,
-      bear: predictions.bear.y1,
-    },
-    {
-      label: '3yr',
-      bull: predictions.bull.y3,
-      base: predictions.base.y3,
-      bear: predictions.bear.y3,
-    },
-    {
-      label: '5yr',
-      bull: predictions.bull.y5,
-      base: predictions.base.y5,
-      bear: predictions.bear.y5,
-    },
-  ];
+  const bullWeeks = interpolateWeekly(currentPrice, predictions.bull);
+  const baseWeeks = interpolateWeekly(currentPrice, predictions.base);
+  const bearWeeks = interpolateWeekly(currentPrice, predictions.bear);
 
-  const CurrentPriceDot = (props: Record<string, unknown>) => {
-    const { cx, cy, index } = props as { cx: number; cy: number; index: number };
-    if (index === 0) {
-      return <Dot cx={cx} cy={cy} r={5} fill="#fff" stroke="#fff" />;
-    }
-    return <></>;
-  };
+  const data = bullWeeks.map((_, i) => ({
+    week: i,
+    bull: bullWeeks[i],
+    base: baseWeeks[i],
+    bear: bearWeeks[i],
+  }));
+
+  // Show ticks at 0, 1yr, 2yr, 3yr, 4yr, 5yr
+  const yearTicks = [0, 52, 104, 156, 208, 260];
 
   return (
     <div className="rounded-xl p-4" style={{ background: '#1a1a1a' }}>
       <ResponsiveContainer width="100%" height={220}>
         <LineChart data={data} margin={{ top: 10, right: 10, bottom: 10, left: 0 }}>
           <XAxis
-            dataKey="label"
+            dataKey="week"
+            ticks={yearTicks}
+            tickFormatter={(w: number) => {
+              if (w === 0) return 'Now';
+              return `${w / 52}yr`;
+            }}
             tick={{ fill: '#888', fontSize: 12 }}
             axisLine={false}
             tickLine={false}
@@ -113,8 +140,8 @@ export default function CrystalBallGraph({
             dataKey="bull"
             stroke="#4ade80"
             strokeWidth={2}
-            dot={<CurrentPriceDot />}
-            activeDot={{ r: 5, fill: '#4ade80', stroke: '#4ade80' }}
+            dot={false}
+            activeDot={{ r: 4, fill: '#4ade80', stroke: '#4ade80' }}
           />
           <Line
             type="monotone"
@@ -123,7 +150,7 @@ export default function CrystalBallGraph({
             strokeWidth={2}
             strokeDasharray="6 3"
             dot={false}
-            activeDot={{ r: 5, fill: '#888', stroke: '#888' }}
+            activeDot={{ r: 4, fill: '#888', stroke: '#888' }}
           />
           <Line
             type="monotone"
@@ -131,7 +158,7 @@ export default function CrystalBallGraph({
             stroke="#ef4444"
             strokeWidth={2}
             dot={false}
-            activeDot={{ r: 5, fill: '#ef4444', stroke: '#ef4444' }}
+            activeDot={{ r: 4, fill: '#ef4444', stroke: '#ef4444' }}
           />
         </LineChart>
       </ResponsiveContainer>
