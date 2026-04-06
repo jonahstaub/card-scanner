@@ -1,12 +1,34 @@
-import Groq from "groq-sdk";
 import { NextRequest, NextResponse } from "next/server";
 import type { CardCandidate, IdentifyResponse } from "@/lib/types";
 
-const client = new Groq();
-
-function parseJSON(text: string): unknown {
+function extractJSON(text: string): unknown {
+  const match = text.match(/\[[\s\S]*\]/);
+  if (match) return JSON.parse(match[0]);
   const stripped = text.replace(/^```(?:json)?\s*\n?/m, "").replace(/\n?```\s*$/m, "");
   return JSON.parse(stripped.trim());
+}
+
+async function queryGroq(prompt: string): Promise<string> {
+  const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "groq/compound-mini",
+      max_tokens: 256,
+      messages: [{ role: "user", content: prompt }],
+    }),
+  });
+
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`${res.status} ${body}`);
+  }
+
+  const data = await res.json();
+  return data.choices?.[0]?.message?.content || "";
 }
 
 export async function POST(req: NextRequest) {
@@ -14,35 +36,20 @@ export async function POST(req: NextRequest) {
     const { ocrText } = await req.json();
 
     if (!ocrText || typeof ocrText !== "string") {
-      return NextResponse.json(
-        { error: "Missing or invalid 'ocrText' field" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Missing ocrText" }, { status: 400 });
     }
 
-    // Truncate OCR text to avoid request size limits
-    const trimmed = ocrText.slice(0, 1000).trim();
+    const trimmed = ocrText.slice(0, 500).trim();
 
-    const completion = await client.chat.completions.create({
-      model: "groq/compound-mini",
-      max_tokens: 512,
-      messages: [
-        {
-          role: "user",
-          content: `OCR text from a sports card scan:\n"${trimmed}"\n\nIdentify this card. Return JSON array of up to 3 candidates: [{playerName, year, cardSet, cardNumber, condition: "Near Mint", confidence}]. JSON only.`,
-        },
-      ],
-    });
+    const text = await queryGroq(
+      `OCR from a sports card: "${trimmed}". Identify it. Return ONLY JSON array: [{"playerName":"","year":0,"cardSet":"","cardNumber":"","condition":"Near Mint","confidence":0.9}]`
+    );
 
-    const text = completion.choices[0]?.message?.content;
     if (!text) {
-      return NextResponse.json(
-        { error: "No response from Groq" },
-        { status: 502 }
-      );
+      return NextResponse.json({ error: "No response" }, { status: 502 });
     }
 
-    const candidates = parseJSON(text) as CardCandidate[];
+    const candidates = extractJSON(text) as CardCandidate[];
     const response: IdentifyResponse = { candidates };
     return NextResponse.json(response);
   } catch (err) {

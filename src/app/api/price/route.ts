@@ -1,36 +1,38 @@
-import Groq from "groq-sdk";
 import { NextRequest, NextResponse } from "next/server";
 import type { PriceResponse } from "@/lib/types";
 
-const client = new Groq();
-
 function extractJSON(text: string): unknown {
   const jsonMatch = text.match(/\{[\s\S]*\}/);
-  if (jsonMatch) {
-    return JSON.parse(jsonMatch[0]);
-  }
+  if (jsonMatch) return JSON.parse(jsonMatch[0]);
   const stripped = text.replace(/^```(?:json)?\s*\n?/m, "").replace(/\n?```\s*$/m, "");
   return JSON.parse(stripped.trim());
 }
 
-async function callWithRetry(
-  messages: Groq.Chat.ChatCompletionMessageParam[],
-  attempt = 0
-): Promise<string> {
-  try {
-    const completion = await client.chat.completions.create({
+async function queryGroq(prompt: string, attempt = 0): Promise<string> {
+  const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
       model: "groq/compound-mini",
-      max_tokens: 512,
-      messages,
-    });
-    return completion.choices[0]?.message?.content || "";
-  } catch (e) {
-    if (attempt < 2 && e instanceof Error && e.message.includes("429")) {
+      max_tokens: 256,
+      messages: [{ role: "user", content: prompt }],
+    }),
+  });
+
+  if (!res.ok) {
+    if (attempt < 2 && (res.status === 429 || res.status === 413)) {
       await new Promise((r) => setTimeout(r, (attempt + 1) * 10000));
-      return callWithRetry(messages, attempt + 1);
+      return queryGroq(prompt, attempt + 1);
     }
-    throw e;
+    const body = await res.text();
+    throw new Error(`${res.status} ${body}`);
   }
+
+  const data = await res.json();
+  return data.choices?.[0]?.message?.content || "";
 }
 
 export async function POST(req: NextRequest) {
@@ -38,26 +40,15 @@ export async function POST(req: NextRequest) {
     const { playerName, year, cardSet, cardNumber, condition } = await req.json();
 
     if (!playerName || !year || !cardSet || !cardNumber || !condition) {
-      return NextResponse.json(
-        { error: "Missing required fields: playerName, year, cardSet, cardNumber, condition" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
-    const text = await callWithRetry([
-      {
-        role: "system",
-        content:
-          "You search for sports card prices and return ONLY raw JSON. No markdown, no explanation, no text before or after the JSON.",
-      },
-      {
-        role: "user",
-        content: `Search eBay sold listings for: ${playerName} ${year} ${cardSet} #${cardNumber} ${condition}. Return: {"estimatedPrice":NUMBER,"priceRange":{"low":NUMBER,"high":NUMBER},"sources":[{"source":"STRING","price":NUMBER,"date":"STRING"}]}`,
-      },
-    ]);
+    const text = await queryGroq(
+      `${playerName} ${year} ${cardSet} #${cardNumber} ${condition} card eBay sold price. Reply ONLY JSON: {"estimatedPrice":0,"priceRange":{"low":0,"high":0},"sources":[{"source":"","price":0,"date":""}]}`
+    );
 
     if (!text) {
-      return NextResponse.json({ error: "No response from Groq" }, { status: 502 });
+      return NextResponse.json({ error: "No response" }, { status: 502 });
     }
 
     const priceData = extractJSON(text) as PriceResponse;
