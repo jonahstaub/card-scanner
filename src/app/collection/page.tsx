@@ -21,7 +21,7 @@ export default function CollectionPage() {
     loadCards();
   }, [loadCards]);
 
-  const totalValue = cards.reduce((sum, c) => sum + c.currentPrice, 0);
+  const totalValue = cards.reduce((sum, c) => sum + (c.currentPrice ?? 0), 0);
 
   const handleDelete = async (e: React.MouseEvent, id: string) => {
     e.preventDefault();
@@ -34,8 +34,11 @@ export default function CollectionPage() {
   };
 
   function getBullBearIndicator(card: Card) {
-    const bullDelta = card.predictions.bull.y1 - card.currentPrice;
-    const bearDelta = card.currentPrice - card.predictions.bear.y1;
+    if (!card.predictions?.bull || !card.predictions?.bear) {
+      return <span className="text-xs text-[#888]">— Pending</span>;
+    }
+    const bullDelta = card.predictions.bull.y1 - (card.currentPrice ?? 0);
+    const bearDelta = (card.currentPrice ?? 0) - card.predictions.bear.y1;
     if (bullDelta >= bearDelta) {
       return (
         <span className="text-xs text-[#4ade80]">
@@ -131,7 +134,7 @@ export default function CollectionPage() {
                   {/* Price + indicator */}
                   <div className="flex flex-col items-end gap-0.5 flex-shrink-0">
                     <span className="text-base font-bold text-[#4ade80]">
-                      ${card.currentPrice.toLocaleString()}
+                      ${(card.currentPrice ?? 0).toLocaleString()}
                     </span>
                     {getBullBearIndicator(card)}
                   </div>
