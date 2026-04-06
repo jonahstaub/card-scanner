@@ -52,9 +52,6 @@ export default function ScannerPage() {
     canvas.width = video.videoWidth * scale;
     canvas.height = video.videoHeight * scale;
     const ctx = canvas.getContext("2d")!;
-    // Flip horizontally to match the mirrored preview
-    ctx.translate(canvas.width, 0);
-    ctx.scale(-1, 1);
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
     const base64 = canvas.toDataURL("image/jpeg", 0.85);
 
@@ -152,7 +149,6 @@ export default function ScannerPage() {
           playsInline
           muted
           className="absolute inset-0 h-full w-full object-cover"
-          style={{ transform: "scaleX(-1)" }}
           suppressHydrationWarning
         />
 
