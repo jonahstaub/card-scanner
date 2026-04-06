@@ -5,6 +5,7 @@ import {
   Line,
   XAxis,
   YAxis,
+  Tooltip,
   ResponsiveContainer,
   Dot,
 } from 'recharts';
@@ -17,6 +18,34 @@ interface CrystalBallGraphProps {
     bear: ScenarioPrediction;
   };
   currentPrice: number;
+}
+
+function CustomTooltip({ active, payload, label }: {
+  active?: boolean;
+  payload?: Array<{ dataKey: string; value: number; color: string }>;
+  label?: string;
+}) {
+  if (!active || !payload?.length) return null;
+
+  return (
+    <div className="rounded-lg px-3 py-2" style={{ background: '#222', border: '1px solid #333' }}>
+      <p className="text-xs font-medium mb-1" style={{ color: '#ccc' }}>{label}</p>
+      {payload.map((entry) => (
+        <div key={entry.dataKey} className="flex items-center gap-2 text-xs">
+          <span
+            className="w-2 h-2 rounded-full"
+            style={{ background: entry.color }}
+          />
+          <span style={{ color: '#888' }}>
+            {entry.dataKey === 'bull' ? 'Elite' : entry.dataKey === 'base' ? 'Base' : 'Decline'}:
+          </span>
+          <span className="font-medium" style={{ color: entry.color }}>
+            ${entry.value.toLocaleString()}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 export default function CrystalBallGraph({
@@ -75,13 +104,17 @@ export default function CrystalBallGraph({
             tickFormatter={(v: number) => `$${v}`}
             width={50}
           />
+          <Tooltip
+            content={<CustomTooltip />}
+            cursor={{ stroke: '#444', strokeDasharray: '4 4' }}
+          />
           <Line
             type="monotone"
             dataKey="bull"
             stroke="#4ade80"
             strokeWidth={2}
             dot={<CurrentPriceDot />}
-            activeDot={false}
+            activeDot={{ r: 5, fill: '#4ade80', stroke: '#4ade80' }}
           />
           <Line
             type="monotone"
@@ -90,7 +123,7 @@ export default function CrystalBallGraph({
             strokeWidth={2}
             strokeDasharray="6 3"
             dot={false}
-            activeDot={false}
+            activeDot={{ r: 5, fill: '#888', stroke: '#888' }}
           />
           <Line
             type="monotone"
@@ -98,7 +131,7 @@ export default function CrystalBallGraph({
             stroke="#ef4444"
             strokeWidth={2}
             dot={false}
-            activeDot={false}
+            activeDot={{ r: 5, fill: '#ef4444', stroke: '#ef4444' }}
           />
         </LineChart>
       </ResponsiveContainer>
