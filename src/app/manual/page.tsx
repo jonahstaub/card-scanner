@@ -14,6 +14,30 @@ const CONDITIONS = [
   "Poor",
 ];
 
+const COMMON_PARALLELS = [
+  "Base",
+  "Refractor",
+  "Gold Refractor",
+  "Pink Refractor",
+  "Aqua Refractor",
+  "Purple Refractor",
+  "Sepia Refractor",
+  "Prism Refractor",
+  "Gold",
+  "Silver",
+  "Foil",
+  "Chrome",
+  "Rainbow Foil",
+  "Mojo Refractor",
+  "1st Bowman Chrome",
+  "Sapphire",
+  "Ice",
+  "Shimmer",
+  "Vintage Stock",
+  "Independence Day",
+  "Printing Plate",
+];
+
 export default function ManualEntryPage() {
   const router = useRouter();
   const [playerName, setPlayerName] = useState("");
@@ -21,6 +45,9 @@ export default function ManualEntryPage() {
   const [cardSet, setCardSet] = useState("");
   const [cardNumber, setCardNumber] = useState("");
   const [condition, setCondition] = useState("Near Mint");
+  const [parallel, setParallel] = useState("Base");
+  const [customParallel, setCustomParallel] = useState("");
+  const [showCustom, setShowCustom] = useState(false);
 
   useEffect(() => {
     const prefill = sessionStorage.getItem("manual_prefill");
@@ -31,12 +58,14 @@ export default function ManualEntryPage() {
       setCardSet(data.cardSet || "");
       setCardNumber(data.cardNumber || "");
       setCondition(data.condition || "Near Mint");
+      setParallel(data.parallel || "Base");
       sessionStorage.removeItem("manual_prefill");
     }
   }, []);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    const finalParallel = showCustom ? customParallel || "Base" : parallel;
     sessionStorage.setItem(
       "selectedCandidate",
       JSON.stringify({
@@ -45,10 +74,10 @@ export default function ManualEntryPage() {
         cardSet,
         cardNumber,
         condition,
+        parallel: finalParallel,
         confidence: 0,
       })
     );
-    // Set an empty photo placeholder for manual entries
     sessionStorage.setItem("capturedPhoto", "");
     router.push("/card/new");
   }
@@ -126,6 +155,63 @@ export default function ManualEntryPage() {
               className="w-full px-3 py-2 rounded-lg text-base"
               style={inputStyle}
             />
+          </div>
+
+          <div>
+            <label className="block text-sm mb-1" style={{ color: "#888" }}>
+              Card Type / Parallel
+            </label>
+            {!showCustom ? (
+              <div className="flex gap-2">
+                <select
+                  value={parallel}
+                  onChange={(e) => setParallel(e.target.value)}
+                  className="flex-1 px-3 py-2 rounded-lg text-base appearance-none"
+                  style={inputStyle}
+                >
+                  {COMMON_PARALLELS.map((p) => (
+                    <option key={p} value={p}>
+                      {p}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={() => setShowCustom(true)}
+                  className="px-3 py-2 rounded-lg text-sm whitespace-nowrap"
+                  style={{ border: "1px solid #333", color: "#888" }}
+                >
+                  Custom
+                </button>
+              </div>
+            ) : (
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={customParallel}
+                  onChange={(e) => setCustomParallel(e.target.value)}
+                  placeholder="e.g. Gold /2023, Sapphire /50"
+                  className="flex-1 px-3 py-2 rounded-lg text-base"
+                  style={inputStyle}
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowCustom(false);
+                    setCustomParallel("");
+                  }}
+                  className="px-3 py-2 rounded-lg text-sm"
+                  style={{ border: "1px solid #333", color: "#888" }}
+                >
+                  List
+                </button>
+              </div>
+            )}
+            {parallel !== "Base" && !showCustom && (
+              <p className="text-xs mt-1" style={{ color: "#666" }}>
+                Numbered? Add it to notes after lookup
+              </p>
+            )}
           </div>
 
           <div>

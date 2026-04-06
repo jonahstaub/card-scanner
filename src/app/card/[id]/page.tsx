@@ -62,6 +62,7 @@ export default function CardDetailPage() {
       cardSet: candidate.cardSet,
       cardNumber: candidate.cardNumber,
       condition: candidate.condition,
+      parallel: candidate.parallel || 'Base',
       currentPrice: 0,
       priceRange: { low: 0, high: 0 },
       priceSources: [],
@@ -92,6 +93,7 @@ export default function CardDetailPage() {
           cardSet: candidate.cardSet,
           cardNumber: candidate.cardNumber,
           condition: candidate.condition,
+          parallel: candidate.parallel || 'Base',
         }),
       });
       if (!priceRes.ok) throw new Error('Price fetch failed');
@@ -271,7 +273,7 @@ export default function CardDetailPage() {
             {card.year} {card.cardSet} #{card.cardNumber}
           </p>
           <p className="text-sm" style={{ color: '#888' }}>
-            {card.condition}
+            {card.parallel && card.parallel !== 'Base' ? `${card.parallel} · ` : ''}{card.condition}
           </p>
         </div>
       </div>

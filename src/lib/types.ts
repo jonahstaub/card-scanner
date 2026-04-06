@@ -4,6 +4,7 @@ export interface CardCandidate {
   cardSet: string;
   cardNumber: string;
   condition: string;
+  parallel: string; // "Base", "Refractor", "Gold /2023", etc.
   confidence: number;
 }
 
@@ -28,6 +29,7 @@ export interface Card {
   cardSet: string;
   cardNumber: string;
   condition: string;
+  parallel: string;
   currentPrice: number;
   priceRange: { low: number; high: number };
   priceSources: PriceSource[];

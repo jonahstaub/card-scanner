@@ -36,43 +36,58 @@ async function searchSerper(query: string): Promise<string> {
 
 export async function POST(req: NextRequest) {
   try {
-    const { playerName, year, cardSet, cardNumber, condition } = await req.json();
+    const { playerName, year, cardSet, cardNumber, condition, parallel } = await req.json();
 
     if (!playerName || !year || !cardSet || !cardNumber || !condition) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
+    const cardType = parallel && parallel !== "Base" ? parallel : "base";
+    const isBase = cardType === "base";
     const cardDesc = `${playerName} ${year} ${cardSet} #${cardNumber}`;
+    const fullDesc = isBase ? `${cardDesc} base` : `${cardDesc} ${cardType}`;
 
-    // Run two searches: one for sold prices, one for price guides
+    // Tailor search queries to the card type
+    const searchExclusions = isBase ? "-parallel -refractor -auto -numbered" : "";
     const [soldResults, guideResults] = await Promise.all([
-      searchSerper(`"${cardDesc}" base card sold eBay -parallel -refractor -auto -numbered`),
-      searchSerper(`${cardDesc} base card price guide value ${condition} raw ungraded`),
+      searchSerper(`"${cardDesc}" ${cardType} card sold eBay ${searchExclusions}`),
+      searchSerper(`${cardDesc} ${cardType} card price guide value ${condition}`),
     ]);
 
     const allResults = [soldResults, guideResults].filter(Boolean).join("\n\n");
 
+    const typeInstruction = isBase
+      ? `Type: BASE card only (NOT parallels, refractors, autos, or numbered cards)
+
+IMPORTANT:
+- Only use prices for the BASE version (not parallels, refractors, autos, numbered, or special inserts)
+- Common base cards of non-star players are usually $0.25-$3
+- Common base cards of stars are usually $1-$10
+- Rookie cards of hyped prospects can be $5-$50+ base`
+      : `Type: ${cardType} parallel/variant
+
+IMPORTANT:
+- Only use prices for the ${cardType} version specifically
+- Parallels are typically worth more than base cards
+- Numbered parallels (/25, /50, /99, etc.) are worth significantly more
+- Refractors typically 2-10x base value depending on color and rarity`;
+
     const prompt = allResults
       ? `You are a sports card pricing expert. I need the price for this SPECIFIC card:
 
-Card: ${cardDesc}
+Card: ${fullDesc}
 Condition: ${condition} (raw/ungraded)
-Type: BASE card only (NOT parallels, refractors, autos, or numbered cards)
+${typeInstruction}
 
 Search results:
 ${allResults}
 
-IMPORTANT:
-- Only use prices for the BASE version of this card (not parallels, refractors, autos, numbered, or special inserts)
 - Focus on RAW/UNGRADED prices unless the condition suggests graded
 - If search results show mostly graded prices (PSA, BGS, SGC), estimate the raw price which is typically 30-60% of a PSA 9
 - Use the most recent sales you can find
-- Common base cards of non-star players are usually $0.25-$3
-- Common base cards of stars are usually $1-$10
-- Rookie cards of hyped prospects can be $5-$50+ base
 
 Return ONLY JSON: {"estimatedPrice":0,"priceRange":{"low":0,"high":0},"sources":[{"source":"","price":0,"date":""}]}`
-      : `Estimate the price for ${cardDesc} BASE card (not parallel) in ${condition} condition, raw/ungraded. Common base cards are usually $0.25-$5 unless it's a major star or hyped rookie. Return ONLY JSON: {"estimatedPrice":0,"priceRange":{"low":0,"high":0},"sources":[{"source":"","price":0,"date":""}]}`;
+      : `Estimate the price for ${fullDesc} in ${condition} condition, raw/ungraded. ${isBase ? "Common base cards are usually $0.25-$5 unless it's a major star or hyped rookie." : `This is a ${cardType} parallel which is typically worth more than base.`} Return ONLY JSON: {"estimatedPrice":0,"priceRange":{"low":0,"high":0},"sources":[{"source":"","price":0,"date":""}]}`;
 
     const completion = await groq.chat.completions.create({
       model: "llama-3.3-70b-versatile",
