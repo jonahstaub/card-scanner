@@ -1,5 +1,8 @@
+import Groq from "groq-sdk";
 import { NextRequest, NextResponse } from "next/server";
 import type { PriceResponse } from "@/lib/types";
+
+const groq = new Groq();
 
 function extractJSON(text: string): unknown {
   const jsonMatch = text.match(/\{[\s\S]*\}/);
@@ -8,31 +11,27 @@ function extractJSON(text: string): unknown {
   return JSON.parse(stripped.trim());
 }
 
-async function queryGroq(prompt: string, attempt = 0): Promise<string> {
-  const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+async function searchSerper(query: string): Promise<string> {
+  const apiKey = process.env.SERPER_API_KEY;
+  if (!apiKey) return "";
+
+  const res = await fetch("https://google.serper.dev/search", {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
+      "X-API-KEY": apiKey,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({
-      model: "groq/compound-mini",
-      max_tokens: 256,
-      messages: [{ role: "user", content: prompt }],
-    }),
+    body: JSON.stringify({ q: query, num: 10 }),
   });
 
-  if (!res.ok) {
-    if (attempt < 2 && (res.status === 429 || res.status === 413)) {
-      await new Promise((r) => setTimeout(r, (attempt + 1) * 10000));
-      return queryGroq(prompt, attempt + 1);
-    }
-    const body = await res.text();
-    throw new Error(`${res.status} ${body}`);
-  }
+  if (!res.ok) return "";
 
   const data = await res.json();
-  return data.choices?.[0]?.message?.content || "";
+  const results: string[] = [];
+  for (const item of data.organic || []) {
+    results.push(`${item.title}: ${item.snippet || ""}`);
+  }
+  return results.slice(0, 5).join("\n");
 }
 
 export async function POST(req: NextRequest) {
@@ -43,10 +42,24 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
-    const text = await queryGroq(
-      `${playerName} ${year} ${cardSet} #${cardNumber} ${condition} card eBay sold price. Reply ONLY JSON: {"estimatedPrice":0,"priceRange":{"low":0,"high":0},"sources":[{"source":"","price":0,"date":""}]}`
+    const cardDesc = `${playerName} ${year} ${cardSet} #${cardNumber}`;
+
+    // Search for real prices
+    const searchResults = await searchSerper(
+      `${cardDesc} card sold price eBay completed`
     );
 
+    const prompt = searchResults
+      ? `Based on these search results for "${cardDesc}" in ${condition} condition, estimate the price.\n\nRESULTS:\n${searchResults}\n\nReturn ONLY JSON: {"estimatedPrice":0,"priceRange":{"low":0,"high":0},"sources":[{"source":"","price":0,"date":""}]}`
+      : `Estimate the price for ${cardDesc} in ${condition} condition based on your knowledge of the card market. Return ONLY JSON: {"estimatedPrice":0,"priceRange":{"low":0,"high":0},"sources":[{"source":"","price":0,"date":""}]}`;
+
+    const completion = await groq.chat.completions.create({
+      model: "llama-3.3-70b-versatile",
+      max_tokens: 512,
+      messages: [{ role: "user", content: prompt }],
+    });
+
+    const text = completion.choices[0]?.message?.content;
     if (!text) {
       return NextResponse.json({ error: "No response" }, { status: 502 });
     }
