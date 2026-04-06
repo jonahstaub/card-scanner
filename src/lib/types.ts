@@ -53,6 +53,7 @@ export interface PriceResponse {
   estimatedPrice: number;
   priceRange: { low: number; high: number };
   sources: PriceSource[];
+  correctedName?: string; // spell-corrected player name
 }
 
 export interface PredictResponse {

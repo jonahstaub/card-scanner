@@ -105,8 +105,12 @@ export default function CardDetailPage() {
       return;
     }
 
+    // Use corrected name if available
+    const correctedName = priceData!.correctedName || candidate.playerName;
+
     const withPrice: Card = {
       ...partialCard,
+      playerName: correctedName,
       currentPrice: priceData!.estimatedPrice,
       priceRange: priceData!.priceRange,
       priceSources: priceData!.sources,
@@ -121,7 +125,7 @@ export default function CardDetailPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          playerName: candidate.playerName,
+          playerName: correctedName,
           year: candidate.year,
           cardSet: candidate.cardSet,
           cardNumber: candidate.cardNumber,
@@ -374,10 +378,10 @@ export default function CardDetailPage() {
             >
               <div className="flex-1 min-w-0 mr-3">
                 <p className="text-sm font-medium" style={{ color: '#4ade80' }}>
-                  If he becomes elite
+                  Best case
                 </p>
                 <p className="text-xs" style={{ color: '#888' }}>
-                  All-Star, MVP
+                  {card.predictions.bull.reasoning}
                 </p>
               </div>
               <p
@@ -396,7 +400,7 @@ export default function CardDetailPage() {
                   Base case
                 </p>
                 <p className="text-xs" style={{ color: '#666' }}>
-                  Solid starter
+                  {card.predictions.base.reasoning}
                 </p>
               </div>
               <p
@@ -412,10 +416,10 @@ export default function CardDetailPage() {
             >
               <div className="flex-1 min-w-0 mr-3">
                 <p className="text-sm font-medium" style={{ color: '#ef4444' }}>
-                  If he declines
+                  Worst case
                 </p>
                 <p className="text-xs" style={{ color: '#888' }}>
-                  Injury, slump
+                  {card.predictions.bear.reasoning}
                 </p>
               </div>
               <p

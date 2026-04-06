@@ -1,8 +1,6 @@
-import Groq from "groq-sdk";
 import { NextRequest, NextResponse } from "next/server";
 import type { PriceResponse } from "@/lib/types";
-
-const groq = new Groq();
+import { groq, correctPlayerName } from "@/lib/groq";
 
 function extractJSON(text: string): unknown {
   const jsonMatch = text.match(/\{[\s\S]*\}/);
@@ -42,9 +40,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
+    // Correct spelling of player name
+    const correctedName = await correctPlayerName(playerName);
+
     const cardType = parallel && parallel !== "Base" ? parallel : "base";
     const isBase = cardType === "base";
-    const cardDesc = `${playerName} ${year} ${cardSet} #${cardNumber}`;
+    const cardDesc = `${correctedName} ${year} ${cardSet} #${cardNumber}`;
     const fullDesc = isBase ? `${cardDesc} base` : `${cardDesc} ${cardType}`;
 
     // Tailor search queries to the card type
@@ -101,6 +102,7 @@ Return ONLY JSON: {"estimatedPrice":0,"priceRange":{"low":0,"high":0},"sources":
     }
 
     const priceData = extractJSON(text) as PriceResponse;
+    priceData.correctedName = correctedName !== playerName ? correctedName : undefined;
     return NextResponse.json(priceData);
   } catch (err) {
     console.error("price error:", err);
