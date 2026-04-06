@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
     const trimmed = ocrText.slice(0, 1000).trim();
 
     const completion = await client.chat.completions.create({
-      model: "llama-3.3-70b-versatile",
+      model: "groq/compound-mini",
       max_tokens: 512,
       messages: [
         {

@@ -4,9 +4,33 @@ import type { PriceResponse } from "@/lib/types";
 
 const client = new Groq();
 
-function parseJSON(text: string): unknown {
+function extractJSON(text: string): unknown {
+  const jsonMatch = text.match(/\{[\s\S]*\}/);
+  if (jsonMatch) {
+    return JSON.parse(jsonMatch[0]);
+  }
   const stripped = text.replace(/^```(?:json)?\s*\n?/m, "").replace(/\n?```\s*$/m, "");
   return JSON.parse(stripped.trim());
+}
+
+async function callWithRetry(
+  messages: Groq.Chat.ChatCompletionMessageParam[],
+  attempt = 0
+): Promise<string> {
+  try {
+    const completion = await client.chat.completions.create({
+      model: "groq/compound-mini",
+      max_tokens: 512,
+      messages,
+    });
+    return completion.choices[0]?.message?.content || "";
+  } catch (e) {
+    if (attempt < 2 && e instanceof Error && e.message.includes("429")) {
+      await new Promise((r) => setTimeout(r, (attempt + 1) * 10000));
+      return callWithRetry(messages, attempt + 1);
+    }
+    throw e;
+  }
 }
 
 export async function POST(req: NextRequest) {
@@ -20,32 +44,23 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const cardDesc = `${playerName} ${year} ${cardSet} #${cardNumber}`;
+    const text = await callWithRetry([
+      {
+        role: "system",
+        content:
+          "You search for sports card prices and return ONLY raw JSON. No markdown, no explanation, no text before or after the JSON.",
+      },
+      {
+        role: "user",
+        content: `Search eBay sold listings for: ${playerName} ${year} ${cardSet} #${cardNumber} ${condition}. Return: {"estimatedPrice":NUMBER,"priceRange":{"low":NUMBER,"high":NUMBER},"sources":[{"source":"STRING","price":NUMBER,"date":"STRING"}]}`,
+      },
+    ]);
 
-    const completion = await client.chat.completions.create({
-      model: "groq/compound",
-      max_tokens: 1024,
-      messages: [
-        {
-          role: "user",
-          content: `Search the web for recent sold prices of this sports card: ${cardDesc} in ${condition} condition. Look for eBay completed/sold listings, COMC prices, and card price guides. Find actual dollar amounts from real sales.
-
-Return ONLY valid JSON: {"estimatedPrice": number, "priceRange": {"low": number, "high": number}, "sources": [{"source": string, "price": number, "date": string}]}.
-
-Use real prices you find from your search. For sources, list the actual sales or listings with real prices and dates.`,
-        },
-      ],
-    });
-
-    const text = completion.choices[0]?.message?.content;
     if (!text) {
-      return NextResponse.json(
-        { error: "No response from Groq" },
-        { status: 502 }
-      );
+      return NextResponse.json({ error: "No response from Groq" }, { status: 502 });
     }
 
-    const priceData = parseJSON(text) as PriceResponse;
+    const priceData = extractJSON(text) as PriceResponse;
     return NextResponse.json(priceData);
   } catch (err) {
     console.error("price error:", err);
